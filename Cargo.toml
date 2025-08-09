@@ -1,0 +1,51 @@
+[package]
+name = "gamefi_satellite"
+version = "0.1.0"
+authors = ["drtranzoc <drtranzocs@gmail.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+
+[features]
+# use library feature to disable all instantiate/execute/query exports
+library = []
+
+[package.metadata.scripts]
+optimize = """sudo docker run --rm -v "$(pwd)":/code \
+  --mount type=volume,source="$(basename "$(pwd)")_cache",target=/code/target \
+  --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
+  cosmwasm/optimizer:0.16.0
+"""
+
+[dependencies]
+cw0 = { version = "0.10.3" } 
+cw2 = { version = "2.0.0" } 
+cw20 = {version = "2.0.0"}
+cw20-base = {version = "2.0.0", features = ["library"]}
+cw-storage-plus  = { version = "2.0.0" } 
+cosmwasm-std = { version = "2.2.0", features = ["stargate"] }
+schemars = "0.8.10"
+serde = { version = "1.0.216", default-features = false, features = ["derive"] }
+thiserror = "2.0.8"
+cosmwasm-schema = "2.2.0"
+serde_json = "1.0.133"
+cw721 = "0.18.0"
+cw721-base = "0.18.0"
+bech32-addr-converter = "1.0.1"
+
+[dev-dependencies]
+cw-multi-test = { version = "2.4.0", features = ["cosmwasm_2_2"] }
