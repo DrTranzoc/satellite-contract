@@ -8,7 +8,7 @@ use crate::{datatypes::{Cw721ReceiveMsg, IbcPacketOutgoing, NftReceiveMsg, Packe
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:gamefi_satellite";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const MIGRATE_VERSION: &str = "0.1.0";
+const MIGRATE_VERSION: &str = "0.2.0";
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
@@ -38,7 +38,7 @@ pub fn instantiate(deps: DepsMut, _env: Env, info: MessageInfo, msg: Instantiate
 pub fn execute(deps: DepsMut, _env: Env, info: MessageInfo, msg: ExecuteMsg) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::ReceiveNft(message) => init_lock_procedure(deps, _env, info, message),
-        ExecuteMsg::UnlockToken { collection, token_id } => init_unlock_procedure(deps, _env, info, collection, token_id),
+        ExecuteMsg::UnlockToken { collection, token_id , native_address} => init_unlock_procedure(deps, _env, info, collection, token_id, native_address),
         ExecuteMsg::UpdateStatePayload { state_changes } => update_state(deps, info, state_changes)
     }
 }
@@ -163,7 +163,7 @@ fn init_lock_procedure(deps: DepsMut, env: Env, info: MessageInfo, message: Cw72
  * 1) Create and save the pending request in the state
  * 2) Send the IBC unlock request to the main contract
  */
-fn init_unlock_procedure(deps: DepsMut, env: Env, info: MessageInfo, collection: String, token_id: String) -> Result<Response, ContractError> {
+fn init_unlock_procedure(deps: DepsMut, env: Env, info: MessageInfo, collection: String, token_id: String, native_address : Option<String>) -> Result<Response, ContractError> {
 
     //Ensure the user exists and owns the token
     let user_data = match USERS_DATA.may_load(deps.storage, info.sender.clone()) {
@@ -184,11 +184,12 @@ fn init_unlock_procedure(deps: DepsMut, env: Env, info: MessageInfo, collection:
     let current_time = env.block.time.seconds();
     let timeout = current_time + state.ibc_settings.timeout;
 
-    let lock_request = IbcPacketOutgoing {
+    let unlock_request = IbcPacketOutgoing {
         packet_type : PacketType::UnlockRequest {
             user : user_data.address.clone(),
             token_id : token_id.clone(),
-            collection
+            collection,
+            native_address
         },
         chain_prefix : state.host_chain_prefix,
         timestamp : current_time,
@@ -198,14 +199,14 @@ fn init_unlock_procedure(deps: DepsMut, env: Env, info: MessageInfo, collection:
     //Prepare the IBC message
     let ibc_message : IbcMsg = IbcMsg::SendPacket {
         channel_id : channel_info.channel_id,
-        data: to_json_binary(&lock_request)?,
+        data: to_json_binary(&unlock_request)?,
         timeout: IbcTimeout::with_timestamp(
             Timestamp::from_seconds(timeout.clone())
         )
     };
 
     //Save the pending request and send the packet through IBC
-    PENDING_PACKETS_REQUESTS.save(deps.storage, (user_data.address.clone(), request_id), &lock_request)?;
+    PENDING_PACKETS_REQUESTS.save(deps.storage, (user_data.address.clone(), request_id), &unlock_request)?;
     UNIQUE_PACKETS_REQUEST_ID.save(deps.storage, &request_id)?;
 
     let mut response = Response::new()

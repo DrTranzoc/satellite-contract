@@ -4,7 +4,7 @@ use cosmwasm_std::{ensure, from_json, Ibc3ChannelOpenResponse, IbcBasicResponse,
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{entry_point, DepsMut, Env, StdResult};
 
-use crate::{datatypes::{AckMessage, ChannelInfo, IbcPacketIncoming, IbcPacketOutgoing, PacketType, UserData}, helpers::send_nft, state::{CHANNEL, PENDING_PACKETS_REQUESTS, TIMED_OUT_UNLOCK_REQUESTS, USERS_DATA}};
+use crate::{datatypes::{AckMessage, ChannelInfo, IbcPacketOutgoing, PacketType, UserData}, helpers::send_nft, state::{CHANNEL, PENDING_PACKETS_REQUESTS, STATE, TIMED_OUT_UNLOCK_REQUESTS, USERS_DATA}};
 
 const IBC_APP_VERSION: &str = "gamefi-satellite-protocol-v1";
 
@@ -16,7 +16,7 @@ pub fn ibc_channel_open(
 ) -> StdResult<IbcChannelOpenResponse> {
     let channel = msg.channel();
 
-    ensure!(CHANNEL.load(deps.storage).is_ok_and(|x| !x.finalized), StdError::generic_err("channel already exists"));
+    ensure!(!CHANNEL.exists(deps.storage), StdError::generic_err("channel already exists"));
  
     if channel.order != IbcOrder::Unordered {
         return Err(StdError::generic_err("only un-ordered channels are supported"));
@@ -79,10 +79,10 @@ pub fn ibc_packet_ack(
     msg: IbcPacketAckMsg,
 ) -> StdResult<IbcBasicResponse> {
 
-    let ack_packet : IbcPacketIncoming = from_json(&msg.acknowledgement.data)?;
+    let ack_packet : AckMessage = from_json(&msg.acknowledgement.data)?;
     let original_packet : IbcPacketOutgoing = from_json(&msg.original_packet.data)?;
 
-    match ack_packet.message {
+    match ack_packet {
         AckMessage::Success { } => {
             match original_packet.packet_type {
                 
@@ -128,7 +128,7 @@ pub fn ibc_packet_ack(
                     )
 
                 },
-                PacketType::UnlockRequest { user, token_id , collection} => {
+                PacketType::UnlockRequest { user, token_id , collection, native_address : _} => {
 
                     //Concretize unlock
                     let mut user_data = USERS_DATA.load(deps.storage, user.clone())?;
@@ -174,7 +174,7 @@ pub fn ibc_packet_ack(
                     )
 
                 },
-                PacketType::UnlockRequest { user, token_id, collection: _ } => {
+                PacketType::UnlockRequest { user, token_id, collection: _ , native_address : _} => {
 
                     PENDING_PACKETS_REQUESTS.remove(deps.storage, (user.clone(), original_packet.request_id));
 
@@ -211,16 +211,18 @@ pub fn ibc_packet_timeout(
                 .add_message(send_nft(collection, token_id, user.clone().to_string()))
             )
         },
-        PacketType::UnlockRequest { user, token_id, collection } => {
+        PacketType::UnlockRequest { user, token_id, collection , native_address : _} => {
             let unlock_request_key = (token_id.clone(), user.clone());
             
+            let state = STATE.load(deps.storage)?;
+
             let mut consecutive_timeouts = match TIMED_OUT_UNLOCK_REQUESTS.load(deps.storage, unlock_request_key.clone()) {
                 Ok(e) => e,
                 Err(_) => 0,
             };
 
-            //After 3 consecutive timeout, the NFT can be unlocked, a relayer issue is a team problem, shouldn't disable the ownership of NFTs
-            if consecutive_timeouts == 2 {
+            //After 3 consecutive timeout, the NFT can be unlocked, a relayer issue is a team problem, shouldn't mine the ownership of NFTs
+            if consecutive_timeouts == state.ibc_settings.max_timeouts {
 
                 TIMED_OUT_UNLOCK_REQUESTS.remove(deps.storage, unlock_request_key.clone());
 

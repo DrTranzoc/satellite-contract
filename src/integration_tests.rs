@@ -91,6 +91,7 @@ mod test
         let unlock_msg = ExecuteMsg::UnlockToken {
             collection: "osmo1xqw2sl9zk8a6pch0csaw78n4swg5ws8t62wc5qta4gnjxfqg6v2qcs777k".to_string(),
             token_id: "1".to_string(),
+            native_address : None
         };
 
         let result = app.execute_contract(Addr::unchecked("osmo1pw2ap3sxk6yn7j4sgj0zj4qlr30f4pm23enp0v"), contract_addr.clone(), &unlock_msg, &[]);
@@ -116,6 +117,7 @@ mod test
             collections_info: collections,
             ibc_settings: IbcSettings {
                 timeout: 300u64,
+                max_timeouts : 3
             },
             host_chain_prefix: "osmo".to_string(),
         }

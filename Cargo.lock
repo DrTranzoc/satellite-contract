@@ -965,7 +965,7 @@ checksum = "c8cbd1169bd7b4a0a20d92b9af7a7e0422888bd38a6f5ec29c1fd8c1558a272e"
 
 [[package]]
 name = "gamefi_satellite"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bech32-addr-converter",
  "cosmwasm-schema 2.2.2",

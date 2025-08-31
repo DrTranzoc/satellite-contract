@@ -29,7 +29,8 @@ pub enum ExecuteMsg {
     ReceiveNft(Cw721ReceiveMsg),
     UnlockToken {
         collection : String,
-        token_id : String
+        token_id : String,
+        native_address : Option<String>
     },
     UpdateStatePayload {
         state_changes : UpdateStatePayload

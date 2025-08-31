@@ -11,12 +11,13 @@ pub struct State {
     pub collections_info : Vec<CollectionInfo>,
     pub admin : Addr,
     pub ibc_settings : IbcSettings,
-    pub host_chain_prefix : String //e.g orai, osmo, juno, inj etc...
+    pub host_chain_prefix : String
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct IbcSettings {
-    pub timeout : u64
+    pub timeout : u64,
+    pub max_timeouts : u8
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
@@ -40,11 +41,13 @@ pub struct IbcPacketOutgoing {
 }
 
 #[cw_serde]
-pub struct IbcPacketIncoming {
-    pub request_id : u128,
-    pub timestamp : u64,
-    pub chain_prefix : String,
-    pub message : AckMessage
+pub enum AckMessage {
+    Error {
+        error : String
+    },
+    Success {
+
+    }
 }
 
 #[cw_serde]
@@ -58,7 +61,8 @@ pub enum PacketType {
     UnlockRequest { 
         user : Addr,
         token_id : String,
-        collection : String
+        collection : String,
+        native_address : Option<String>
     }
 }
 
@@ -75,16 +79,6 @@ impl fmt::Display for PacketType {
            PacketType::LockRequest { .. }  => write!(f, "lock_request"),
            PacketType::UnlockRequest { .. } => write!(f, "unlock_request"),
        }
-    }
-}
-
-#[cw_serde]
-pub enum AckMessage {
-    Error {
-        error : String
-    },
-    Success {
-
     }
 }
 
