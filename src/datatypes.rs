@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Binary};
+use cosmwasm_std::{Addr, Binary, Coin};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,14 @@ pub struct State {
     pub collections_info : Vec<CollectionInfo>,
     pub admin : Addr,
     pub ibc_settings : IbcSettings,
-    pub host_chain_prefix : String
+    pub host_chain_prefix : String,
+    pub lock_credit_settings : LockCreditSettings
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+pub struct LockCreditSettings {
+    pub token : Option<Coin>,
+    pub credit_per_lock : u16
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
@@ -29,7 +36,8 @@ pub struct CollectionInfo {
 pub struct UserData {
     pub address : Addr,
     pub locked_tokens : HashMap<String, Vec<String>>,
-    pub last_lock : u64
+    pub last_lock : u64,
+    pub lock_credits : u16
 }
 
 #[cw_serde]

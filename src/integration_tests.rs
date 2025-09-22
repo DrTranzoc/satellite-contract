@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test
 {
-    use cosmwasm_std::{to_json_binary, Addr, Empty, Timestamp};
+    use cosmwasm_std::{to_json_binary, Addr, Coin, Empty, Timestamp};
     use cw_multi_test::{App, Contract, ContractWrapper, Executor};
 
     use crate::{contract::{execute, instantiate, migrate, query}, datatypes::{ChannelInfo, CollectionInfo, Cw721ReceiveMsg, IbcSettings, NftReceiveMsg, PacketType}, msg::{ExecuteMsg, InstantiateMsg, QueryMsg}};
@@ -120,6 +120,13 @@ mod test
                 max_timeouts : 3
             },
             host_chain_prefix: "osmo".to_string(),
+            lock_credit_settings: crate::datatypes::LockCreditSettings {
+                token: Some(Coin {
+                    denom: "uosmo".to_string(),
+                    amount: 100_000u128.into()
+                }),
+                credit_per_lock: 1u16
+            }
         }
     }
 }

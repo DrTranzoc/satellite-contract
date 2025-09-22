@@ -69,14 +69,32 @@ pub(crate) fn get_token_status(
     Ok(token_status.to_string())
 }
 
-pub(crate) fn get_pending_packets(deps : Deps, start_after : Option<(Addr , u128)>, limit : Option<u16>) -> StdResult<Vec<PacketType>> {
+pub(crate) fn get_all_pending_packets(deps : Deps, start_after : Option<(Addr , u128)>, limit : Option<u16>) -> StdResult<Vec<PacketType>> {
 
     let start = start_after.map(Bound::exclusive);
     let limit = limit.unwrap_or(10) as usize;
 
     Ok(
         PENDING_PACKETS_REQUESTS.range(
-          deps.storage, 
+            deps.storage, 
+            start,
+            None, 
+                Order::Descending
+            )
+            .take(limit)
+            .map(|res| res.map(|(_, packet)| packet.packet_type))
+            .collect::<StdResult<Vec<_>>>()?
+    )
+}
+
+pub(crate) fn get_user_pending_packets(deps : Deps, start_after : Option<u128>, limit : Option<u16>, user: Addr) -> StdResult<Vec<PacketType>> {
+
+    let start = start_after.map(Bound::exclusive);
+    let limit = limit.unwrap_or(10) as usize;
+
+    Ok(
+        PENDING_PACKETS_REQUESTS.prefix(user).range(
+            deps.storage, 
             start,
             None, 
                 Order::Descending

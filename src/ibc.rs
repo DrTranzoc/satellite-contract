@@ -94,7 +94,8 @@ pub fn ibc_packet_ack(
                         Ok(None) => UserData { 
                             address : user.clone(),
                             locked_tokens : HashMap::new(),
-                            last_lock : 0
+                            last_lock : 0,
+                            lock_credits : 0
                         },
                         Err(err) => { 
                             return Ok(
@@ -162,6 +163,11 @@ pub fn ibc_packet_ack(
                 //Restore the ownership of the token, sending it back the the owner.
                 PacketType::LockRequest { user, token_id, collection , native_address : _} => {
 
+                    //Return credit to the user
+                    let mut user_data = USERS_DATA.load(deps.storage, user.clone())?;
+                    user_data.lock_credits += 1;
+                    USERS_DATA.save(deps.storage, user.clone(), &user_data)?;
+
                     PENDING_PACKETS_REQUESTS.remove(deps.storage, (user.clone(), original_packet.request_id));
 
                     return Ok(
@@ -202,6 +208,11 @@ pub fn ibc_packet_timeout(
 
     match original_data.packet_type {
         PacketType::LockRequest { user, token_id , collection, native_address : _} => {
+
+            //Return credit to the user
+            let mut user_data = USERS_DATA.load(deps.storage, user.clone())?;
+            user_data.lock_credits += 1;
+            USERS_DATA.save(deps.storage, user.clone(), &user_data)?;
             
             PENDING_PACKETS_REQUESTS.remove(deps.storage, (user.clone(), original_data.request_id));
             

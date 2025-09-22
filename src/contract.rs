@@ -1,9 +1,11 @@
-use cosmwasm_std::{ensure, from_json, to_json_binary, Addr, IbcMsg, IbcTimeout, Timestamp};
+use std::collections::HashMap;
+
+use cosmwasm_std::{ensure, from_json, to_json_binary, Addr, IbcBasicResponse, IbcMsg, IbcTimeout, Timestamp};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw2::set_contract_version;
 
-use crate::{datatypes::{Cw721ReceiveMsg, IbcPacketOutgoing, NftReceiveMsg, PacketType, State}, helpers::{ensure_error, standard_error}, msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, UpdateStatePayload}, queries::{get_all_users_data, get_pending_packets, get_state, get_token_status, get_user_data}, state::{CHANNEL, PENDING_PACKETS_REQUESTS, STATE, UNIQUE_PACKETS_REQUEST_ID, USERS_DATA}, ContractError};
+use crate::{datatypes::{Cw721ReceiveMsg, IbcPacketOutgoing, NftReceiveMsg, PacketType, State, UserData}, helpers::{ensure_error, standard_error}, msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, UpdateStatePayload}, queries::{get_all_pending_packets, get_all_users_data, get_state, get_token_status, get_user_data, get_user_pending_packets}, state::{CHANNEL, PENDING_PACKETS_REQUESTS, STATE, UNIQUE_PACKETS_REQUEST_ID, USERS_DATA}, ContractError};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:gamefi_satellite";
@@ -25,7 +27,8 @@ pub fn instantiate(deps: DepsMut, _env: Env, info: MessageInfo, msg: Instantiate
         collections_info : msg.collections_info,
         admin : info.sender.clone(),
         ibc_settings : msg.ibc_settings,
-        host_chain_prefix : msg.host_chain_prefix
+        host_chain_prefix : msg.host_chain_prefix,
+        lock_credit_settings : msg.lock_credit_settings
     };
 
     STATE.save(deps.storage, &state)?;
@@ -39,7 +42,8 @@ pub fn execute(deps: DepsMut, _env: Env, info: MessageInfo, msg: ExecuteMsg) -> 
     match msg {
         ExecuteMsg::ReceiveNft(message) => init_lock_procedure(deps, _env, info, message),
         ExecuteMsg::UnlockToken { collection, token_id , native_address} => init_unlock_procedure(deps, _env, info, collection, token_id, native_address),
-        ExecuteMsg::UpdateStatePayload { state_changes } => update_state(deps, info, state_changes)
+        ExecuteMsg::UpdateStatePayload { state_changes } => update_state(deps, info, state_changes),
+        ExecuteMsg::GetCredits { amount } => purchase_credits(deps, info, amount)
     }
 }
 
@@ -48,9 +52,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetUserData{address}=> to_json_binary(&get_user_data(deps,address)?),
         QueryMsg::GetAllUsersData{start_after,limit}=>to_json_binary(&get_all_users_data(deps,start_after,limit)?),
-        QueryMsg::GetPendingPackets{start_after,limit}=>to_json_binary(&get_pending_packets(deps,start_after,limit)?),
+        QueryMsg::GetPendingPackets{start_after,limit}=>to_json_binary(&get_all_pending_packets(deps,start_after,limit)?),
         QueryMsg::GetState{}=>to_json_binary(&get_state(deps)?),
-        QueryMsg::GetTokenStatus { user, collection, token_id } => to_json_binary(&get_token_status(deps, user, collection, token_id)?)
+        QueryMsg::GetTokenStatus { user, collection, token_id } => to_json_binary(&get_token_status(deps, user, collection, token_id)?),
+        QueryMsg::GetUserPendingPackets{start_after,limit, user}=>to_json_binary(&get_user_pending_packets(deps,start_after,limit, user)?),
     }
 }
 
@@ -93,6 +98,55 @@ pub fn update_state(
  * 1) Create and save the pending request in the state
  * 2) Send the IBC lock request to the main contract
  */
+fn purchase_credits(deps: DepsMut, info: MessageInfo, amount: u16) -> Result<Response, ContractError> {
+    let state = STATE.load(deps.storage)?;
+
+    if info.funds.is_empty() {
+        return standard_error("No funds sent".to_string())
+    }
+
+    let sent_funds = info.funds[0].clone();
+
+    let mut user_data = match USERS_DATA.may_load(deps.storage, info.sender.clone()) {
+        Ok(Some(data)) => data,
+        Ok(None) => UserData { 
+            address : info.sender.clone(),
+            locked_tokens : HashMap::new(),
+            last_lock : 0,
+            lock_credits : 0
+        },
+        Err(_) => { 
+            return standard_error("Failed to purchase credits, internal error".to_string())
+        }
+    };
+
+    if info.sender != state.admin {
+        match state.lock_credit_settings.token {
+            Some(token) => {
+                if token.denom != sent_funds.denom || token.amount.u128() * (amount as u128) > sent_funds.amount.u128() {
+                    return standard_error(format!("Invalid funds sent, required {} {}", token.amount.u128() * (amount as u128), token.denom))
+                }
+            },
+            None => { }
+        }
+    }
+
+    user_data.lock_credits += amount;
+    USERS_DATA.save(deps.storage, info.sender.clone(), &user_data)?;
+
+    Ok(
+        Response::default()
+        .add_attribute("action", "purchased credits")
+        .add_attribute("new credits balance", user_data.lock_credits.to_string())
+    )
+}
+
+/**
+ * Init the lock procedure, 
+ * 0) Basic checks
+ * 1) Create and save the pending request in the state
+ * 2) Send the IBC lock request to the main contract
+ */
 fn init_lock_procedure(deps: DepsMut, env: Env, info: MessageInfo, message: Cw721ReceiveMsg) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
     let channel_info = CHANNEL.load(deps.storage)?;
@@ -103,10 +157,29 @@ fn init_lock_procedure(deps: DepsMut, env: Env, info: MessageInfo, message: Cw72
             .is_some();
 
     ensure!(is_collection_supported , ensure_error("The collection is not supported.".into()));
-    ensure!(channel_info.finalized, ensure_error("can't lock, IBC channel is closed.".into()));
+    ensure!(channel_info.finalized, ensure_error("Can't lock, IBC channel is closed.".into()));
 
     let msg: NftReceiveMsg = from_json(&message.msg)?;
     let user = Addr::unchecked(message.sender);
+
+    if state.lock_credit_settings.token.is_some() {
+        match USERS_DATA.may_load(deps.storage, user.clone()) {
+            Ok(Some(mut data)) => {
+                if data.lock_credits < state.lock_credit_settings.credit_per_lock.clone() {
+                    return standard_error("You don't have enough lock credits, please purchase more".to_string())
+                } else {
+                    data.lock_credits -= state.lock_credit_settings.credit_per_lock.clone();
+                    USERS_DATA.save(deps.storage, user.clone(), &data)?;
+                }
+            },
+            Ok(None) => {
+                return standard_error("User not found, please purchase lock credits first".to_string())
+            },
+            Err(_e) => {
+                return standard_error("User not found, please purchase lock credits first".to_string())
+            }
+        }
+    }
 
     match msg {
         NftReceiveMsg::LockNft { remote_recipient } => {
