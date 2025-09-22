@@ -85,6 +85,9 @@ pub fn update_state(
     if let Some(host_chain_prefix) = state_changes.host_chain_prefix {
         state.host_chain_prefix = host_chain_prefix;
     }
+    if let Some(lock_credit_settings) = state_changes.lock_credit_settings {
+        state.lock_credit_settings = lock_credit_settings;
+    }
 
     Ok(
         Response::default()

@@ -17,7 +17,8 @@ pub struct UpdateStatePayload {
     pub collections_info : Option<Vec<CollectionInfo>>,
     pub ibc_settings : Option<IbcSettings>,
     pub admin : Option<Addr>,
-    pub host_chain_prefix : Option<String> //e.g orai, osmo, juno, inj etc...
+    pub host_chain_prefix : Option<String>, //e.g orai, osmo, juno, inj etc...
+    pub lock_credit_settings : Option<LockCreditSettings>
 }
 
 #[cw_serde]
