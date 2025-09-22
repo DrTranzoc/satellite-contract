@@ -96,10 +96,9 @@ pub fn update_state(
 }
 
 /**
- * Init the lock procedure, 
- * 0) Basic checks
- * 1) Create and save the pending request in the state
- * 2) Send the IBC lock request to the main contract
+ * Credits can be purchased by sending the required tokens to the contract,
+ * the amount of credits purchased is based on the lock_credit_settings in the state
+ * the credits are used to lock tokens, if the user has no credits he can't lock tokens (optional)
  */
 fn purchase_credits(deps: DepsMut, info: MessageInfo, amount: u16) -> Result<Response, ContractError> {
     let state = STATE.load(deps.storage)?;
