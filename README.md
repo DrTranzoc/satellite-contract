@@ -14,6 +14,7 @@ Built for every IBC-powered dAPPS that want to implement custom logic on NFTs wi
 - ✅ Custom execution and query messages
 - ✅ Built with `cosmwasm-std 2.2`, `cw-multi-test`, and the latest Cosmos SDK integration
 - ✅ Safety measure to emergency unlock NFTs if the IBC relayer appear to be offline
+- ✅ Credit system for locks
 
 ---
 
